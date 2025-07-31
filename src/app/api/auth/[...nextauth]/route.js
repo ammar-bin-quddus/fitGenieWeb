@@ -1,4 +1,5 @@
-import axios from "axios";
+import { dbConnect } from "@/lib/dbConnect";
+import User from "@/models/User";
 import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 
@@ -8,26 +9,35 @@ export const authOptions = {
     CredentialsProvider({
       name: "Credentials",
       credentials: {
-        email: { label: "Email", type: "email"},
+        email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials, req) {
         // Add logic here to look up the user from the credentials supplied
-        try {
-          const res = await axios.post("http://localhost:3000/api/login", {
-            email: credentials.email,
-            password: credentials.password,
-          });
-          const user = res.data.user;
+        if (!credentials?.email || !credentials?.password) {
+          throw new Error("Missing email or password");
+        }
 
-          // If no error and we have user data, return it
-          if (res.status === 200 && user) {
-            return user;
+        try {
+          await dbConnect();
+          const user = await User.findOne({ email: credentials.email });
+          if (!user) {
+            throw new Error("No user found with the given email");
           }
-          // Return null if user data could not be retrieved
-          return null;
+          const isValidPassword = await bcrypt.compare(
+            credentials.password,
+            user.password
+          );
+          if (!isValidPassword) {
+            throw new Error("Invalid password");
+          }
+          return {
+            id: user._id.toString(),
+            email: user.email,
+          };
         } catch (error) {
-          console.log("Error during authorization:", error.message);
+          console.error("Authorization error:", error);
+          throw new Error("Authorization failed");
         }
       },
     }),
@@ -37,24 +47,23 @@ export const authOptions = {
       // Persist the user information in the token
       if (user) {
         token.id = user.id;
-        token.name = user.name;
-        token.email = user.email;
       }
       return token;
     },
     async session({ session, token }) {
-      // Add properties to the session object
-      session.user.id = token.id;
-      session.user.name = token.name;
-      session.user.email = token.email;
+      if (session.user) {
+        session.user.id = token.id;
+      }
       return session;
     },
   },
   pages: {
     signIn: "/login",
+    error: "/login",
   },
   session: {
     strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   secret: process.env.NEXTAUTH_SECRET,
 };
