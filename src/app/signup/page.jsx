@@ -15,6 +15,11 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import axios from "axios";
+import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
+
+
 
 const formSchema = z.object({
   username: z.string().min(3, {
@@ -41,8 +46,35 @@ const SignupPage = () => {
       password: "",
     },
   });
-  const onSubmit = (data) => {
-    console.log("Form submitted:", data);
+
+  const router = useRouter();
+
+  const onSubmit = async(data) => {
+    console.log(data);
+    const { name, email, password, photoUrl } = data;
+    try {
+      const postRes = await axios.post("/api/auth/signup", {
+        name,
+        photoUrl,
+        email,
+        password,
+      });
+
+      if (postRes.status === 200) {
+        const res = await signIn("credentials", {
+          email,
+          password,
+          redirect: false,
+        });
+
+        if (res.ok) {
+          router.push("/login");
+        }
+      }
+
+    } catch (error) {
+      console.log("Error:", error);
+    }
   };
 
   return (
